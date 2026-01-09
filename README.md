@@ -11,12 +11,16 @@ Basically Afro lets you make HTTP requests from the command line and save the re
 ### Bundles
 Afro allows you define bundles. A bundle is a collection of related requests. They may share things such as the same base URL or a common auth scheme.
 
-By default, the current working directory is considered a bundle and actions performed don't need to be specified. Alternatively, you can also pass in a `--bundle` arg to specify what bundle to use for the command.
+By default, if the current working directory has an afro config file, it is considered a bundle and actions will use the configuration defined. Alternatively, you can also pass in a `--bundle` arg to specify what bundle to use for the command.
 
 You can run `afro init` to set up a new bundle. It will interactively walk through questions like base_url, authentication schemes, any common headers and save these so that they are always applied to requests in the bundle.
 
 ### Authentication
 Afro offers support for authentication schemes and if one is presented will automatically retry it in requests if it receives an auth error.
+
+For username and password authentication, we can specify username and password in the bundle configuration and have that saved authentication be used.
+
+For example, you could have `afro auth --username=etin --password --save="login-as-etin"` (which will ask for password via the system prompt) and then in the future simply run `afro auth login-as-etin`
 
 ### Making requests
 To make a request simply call afro along with the HTTP verb and the URL. If you pass in a relative path, ie without a scheme, then Afro will automatically prepend the base URL to yours along with sending anythibg else configured such as authentication and headers.
@@ -29,4 +33,5 @@ Headers can also be optionally passed with `-h` or `--header` or `--headers`. He
 
 If the same header is set on the bundle and in the request, the request takes precedence.
 
-To opt out of any default configuration for this specify request, use the argument `--no-auth` or `--no-headers` as required. 
+To opt out of any default configuration for this specify request, use the argument `--no-auth` or `--no-headers` as required. You can opt out of headers and still pass specific headers to the request.
+
