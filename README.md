@@ -35,3 +35,13 @@ If the same header is set on the bundle and in the request, the request takes pr
 
 To opt out of any default configuration for this specify request, use the argument `--no-auth` or `--no-headers` as required. You can opt out of headers and still pass specific headers to the request.
 
+### Saving requests
+Afro allows you save requests so that they can be easily called again. A request can be saved by making the request in the regular way along with a `--save="my-request-name"` option.
+
+### Chaining requests and extracting data
+You can create a chain in Afro, which is a set of linked requests that run in order and can take responses from previously run requests as inputs in the URL, body or headers.
+
+Extraction happens via JSON path and will store the extracted value in the named variable. That named variable can then be used in the next request as needed.
+
+
+
