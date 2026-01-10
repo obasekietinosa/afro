@@ -16,6 +16,7 @@ func addRequestFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceP("header", "H", []string{}, "Request headers (e.g. \"Content-Type: application/json\")")
 	cmd.Flags().Bool("no-auth", false, "Do not use configured authentication")
 	cmd.Flags().Bool("no-headers", false, "Do not use configured common headers")
+	cmd.Flags().String("save", "", "Save the request with the given name")
 }
 
 // RequestOptions holds the options for making a request
@@ -26,6 +27,50 @@ type RequestOptions struct {
 	Headers   []string
 	NoAuth    bool
 	NoHeaders bool
+	SaveName  string
+}
+
+func saveRequest(opts RequestOptions, name string) {
+	// Structure: requests.<name>
+	key := fmt.Sprintf("requests.%s", name)
+	viper.Set(key+".method", opts.Method)
+	viper.Set(key+".url", opts.URL)
+	if opts.Body != "" {
+		viper.Set(key+".body", opts.Body)
+	}
+	if len(opts.Headers) > 0 {
+		viper.Set(key+".headers", opts.Headers)
+	}
+	viper.Set(key+".no_auth", opts.NoAuth)
+	viper.Set(key+".no_headers", opts.NoHeaders)
+
+	// Save the config
+	// Determine filename logic similar to init/root
+	// Ideally we just write back to whatever config was loaded.
+	// viper.WriteConfig() works if a config file was discovered/loaded.
+	// If it wasn't (e.g. no file yet, or config set programmatically), it might fail.
+	// But init guarantees a file creation.
+	// If we are using --bundle, viper should know the config file used.
+
+	if err := viper.WriteConfig(); err != nil {
+        // Fallback or explicit write?
+        // If viper.ConfigFileUsed() is empty, we might need to default to afro.yaml or the bundle name.
+        if viper.ConfigFileUsed() == "" {
+             // Try to write to afro.yaml by default or the bundle name
+             // But we need to know the bundle name if passed via flag?
+             // It's cleaner to assume viper knows the file if it was loaded.
+             // If not loaded (first run without init?), we might need to handle it.
+             // But let's assume valid environment.
+             err = viper.WriteConfigAs("afro.yaml")
+        }
+        if err != nil {
+		    fmt.Fprintf(os.Stderr, "Warning: failed to save request: %v\n", err)
+        } else {
+             fmt.Printf("Request saved as '%s' to afro.yaml\n", name)
+        }
+	} else {
+		fmt.Printf("Request saved as '%s' to %s\n", name, viper.ConfigFileUsed())
+	}
 }
 
 func makeRequest(opts RequestOptions) error {
@@ -76,6 +121,11 @@ func makeRequest(opts RequestOptions) error {
 	req, err := http.NewRequest(opts.Method, url, reqBody)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Save request if requested
+	if opts.SaveName != "" {
+		saveRequest(opts, opts.SaveName)
 	}
 
 	// Add Headers

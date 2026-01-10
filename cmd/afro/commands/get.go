@@ -30,6 +30,7 @@ func buildRequestOptions(method string, args []string, cmd *cobra.Command) Reque
     headers, _ := cmd.Flags().GetStringSlice("header")
     noAuth, _ := cmd.Flags().GetBool("no-auth")
     noHeaders, _ := cmd.Flags().GetBool("no-headers")
+    saveName, _ := cmd.Flags().GetString("save")
 
     return RequestOptions{
         Method:    method,
@@ -38,5 +39,6 @@ func buildRequestOptions(method string, args []string, cmd *cobra.Command) Reque
         Headers:   headers,
         NoAuth:    noAuth,
         NoHeaders: noHeaders,
+        SaveName:  saveName,
     }
 }

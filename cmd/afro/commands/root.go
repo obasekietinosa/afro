@@ -39,7 +39,14 @@ func initConfig() {
 	} else {
 		// Search config in current directory with name "afro" (without extension).
 		viper.AddConfigPath(".")
-		viper.SetConfigName("afro")
+
+		// Check if bundle flag is set
+		bundle, _ := rootCmd.Flags().GetString("bundle")
+		if bundle != "" {
+			viper.SetConfigName(bundle)
+		} else {
+			viper.SetConfigName("afro")
+		}
 	}
 
 	viper.AutomaticEnv() // read in environment variables that match

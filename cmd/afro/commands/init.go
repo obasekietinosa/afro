@@ -77,11 +77,17 @@ func runInit() {
 	}
 
 	// Save config
-	err := viper.WriteConfigAs("afro.yaml")
+	filename := "afro.yaml"
+	bundle, _ := rootCmd.Flags().GetString("bundle")
+	if bundle != "" {
+		filename = bundle + ".yaml"
+	}
+
+	err := viper.WriteConfigAs(filename)
 	if err != nil {
 		fmt.Printf("Error writing config file: %v\n", err)
 		return
 	}
 
-	fmt.Println("Bundle initialized! Configuration saved to afro.yaml")
+	fmt.Printf("Bundle initialized! Configuration saved to %s\n", filename)
 }
