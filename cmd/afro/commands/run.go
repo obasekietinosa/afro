@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -14,7 +15,7 @@ var runCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		name := args[0]
-		runSavedRequest(name)
+		runSavedRequest(cmd.Context(), name)
 	},
 }
 
@@ -27,7 +28,7 @@ func init() {
     // For now, let's just implement basic run.
 }
 
-func runSavedRequest(name string) {
+func runSavedRequest(ctx context.Context, name string) {
     key := fmt.Sprintf("requests.%s", name)
     if !viper.IsSet(key) {
         fmt.Fprintf(os.Stderr, "Error: request '%s' not found in config\n", name)
@@ -51,7 +52,7 @@ func runSavedRequest(name string) {
         // Don't save again when running
     }
 
-    if err := makeRequest(opts); err != nil {
+    if err := makeRequest(ctx, opts); err != nil {
         fmt.Fprintf(os.Stderr, "Error: %v\n", err)
         os.Exit(1)
     }

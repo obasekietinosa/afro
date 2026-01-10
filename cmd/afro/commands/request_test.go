@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -46,7 +47,7 @@ func TestMakeRequest(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := makeRequest(opts)
+	err := makeRequest(context.Background(), opts)
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -90,7 +91,7 @@ func TestMakeRequestNoAuth(t *testing.T) {
     oldStdout := os.Stdout
     r, w, _ := os.Pipe()
     os.Stdout = w
-	err := makeRequest(opts)
+	err := makeRequest(context.Background(), opts)
     w.Close()
     os.Stdout = oldStdout
     _, _ = r.Read(make([]byte, 100))

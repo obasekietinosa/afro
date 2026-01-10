@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -73,7 +74,7 @@ func saveRequest(opts RequestOptions, name string) {
 	}
 }
 
-func makeRequest(opts RequestOptions) error {
+func makeRequest(ctx context.Context, opts RequestOptions) error {
 	// Determine URL
 	url := opts.URL
 	baseURL := viper.GetString("base_url")
@@ -104,8 +105,18 @@ func makeRequest(opts RequestOptions) error {
 
 	var reqBody io.Reader
 	if opts.Body != "" {
-		if _, err := os.Stat(opts.Body); err == nil {
-			// It's a file
+		if strings.HasPrefix(opts.Body, "@") {
+			// Explicit file path
+			filePath := strings.TrimPrefix(opts.Body, "@")
+			f, err := os.Open(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to open body file: %w", err)
+			}
+			defer f.Close()
+			reqBody = f
+		} else if _, err := os.Stat(opts.Body); err == nil {
+			// It's a file (legacy implicit check)
+			// TODO: Consider removing implicit check in future versions
 			f, err := os.Open(opts.Body)
 			if err != nil {
 				return fmt.Errorf("failed to open body file: %w", err)
@@ -118,7 +129,7 @@ func makeRequest(opts RequestOptions) error {
 		}
 	}
 
-	req, err := http.NewRequest(opts.Method, url, reqBody)
+	req, err := http.NewRequestWithContext(ctx, opts.Method, url, reqBody)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -174,11 +185,14 @@ func makeRequest(opts RequestOptions) error {
     // For now just output body as that's typical for curl-like tools, maybe status code too.
     // The README doesn't explicitly say what to output, but usually it's the response body.
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
+	if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
 		return fmt.Errorf("failed to read body: %w", err)
 	}
+	// Ensure newline at the end if needed? curl doesn't usually add one unless requested or formatted.
+	// fmt.Println(string(body)) added one. io.Copy won't.
+	// Let's add a newline for friendliness in CLI unless we want raw output.
+	// Typical behavior is raw output.
+	fmt.Println()
 
-	fmt.Println(string(body))
 	return nil
 }
