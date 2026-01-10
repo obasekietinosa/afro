@@ -46,29 +46,16 @@ func saveRequest(opts RequestOptions, name string) {
 	viper.Set(key+".no_headers", opts.NoHeaders)
 
 	// Save the config
-	// Determine filename logic similar to init/root
-	// Ideally we just write back to whatever config was loaded.
-	// viper.WriteConfig() works if a config file was discovered/loaded.
-	// If it wasn't (e.g. no file yet, or config set programmatically), it might fail.
-	// But init guarantees a file creation.
-	// If we are using --bundle, viper should know the config file used.
-
 	if err := viper.WriteConfig(); err != nil {
-        // Fallback or explicit write?
-        // If viper.ConfigFileUsed() is empty, we might need to default to afro.yaml or the bundle name.
-        if viper.ConfigFileUsed() == "" {
-             // Try to write to afro.yaml by default or the bundle name
-             // But we need to know the bundle name if passed via flag?
-             // It's cleaner to assume viper knows the file if it was loaded.
-             // If not loaded (first run without init?), we might need to handle it.
-             // But let's assume valid environment.
-             err = viper.WriteConfigAs("afro.yaml")
-        }
-        if err != nil {
-		    fmt.Fprintf(os.Stderr, "Warning: failed to save request: %v\n", err)
-        } else {
-             fmt.Printf("Request saved as '%s' to afro.yaml\n", name)
-        }
+		// Fallback or explicit write?
+		if viper.ConfigFileUsed() == "" {
+			err = viper.WriteConfigAs("afro.yaml")
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save request: %v\n", err)
+		} else {
+			fmt.Printf("Request saved as '%s' to afro.yaml\n", name)
+		}
 	} else {
 		fmt.Printf("Request saved as '%s' to %s\n", name, viper.ConfigFileUsed())
 	}
@@ -89,18 +76,10 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 			url = baseURL + url
 		}
 	} else if !strings.HasPrefix(url, "http") {
-		// If no base URL and no scheme, assume http:// for now or error?
-		// For now let's assume if the user provides a raw domain, they meant http
-		// But strictly speaking, we should probably require scheme if no base_url
-		// The requirement says "If you pass in a relative path... prepend the base URL".
-		// If no base url is configured, maybe we should just try using it as is, but it will fail if no scheme.
-		// Let's prepend https:// if it looks like a domain, or just error.
-		// For now, let's just proceed and let http.NewRequest fail or not.
+		// If no base URL and no scheme, assume http:// for now.
 		if !strings.Contains(url, "://") {
-             // Maybe error out if no base url?
-             // "An example GET request would be afro get https://api.etin.dev"
-             // "If you pass in a relative path, ie without a scheme, then Afro will automatically prepend the base URL"
-        }
+			// Proceed and let http.NewRequest fail or not.
+		}
 	}
 
 	var reqBody io.Reader
@@ -116,7 +95,6 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 			reqBody = f
 		} else if _, err := os.Stat(opts.Body); err == nil {
 			// It's a file (legacy implicit check)
-			// TODO: Consider removing implicit check in future versions
 			f, err := os.Open(opts.Body)
 			if err != nil {
 				return fmt.Errorf("failed to open body file: %w", err)
@@ -188,10 +166,7 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 	if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
 		return fmt.Errorf("failed to read body: %w", err)
 	}
-	// Ensure newline at the end if needed? curl doesn't usually add one unless requested or formatted.
-	// fmt.Println(string(body)) added one. io.Copy won't.
-	// Let's add a newline for friendliness in CLI unless we want raw output.
-	// Typical behavior is raw output.
+	// Ensure newline at the end for friendliness in CLI
 	fmt.Println()
 
 	return nil

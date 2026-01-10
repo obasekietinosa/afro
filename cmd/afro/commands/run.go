@@ -21,11 +21,6 @@ var runCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(runCmd)
-    // We might want to allow overriding flags, but for now let's stick to simple replay
-    // or allow overriding via same flags as makeRequest?
-    // "Replay it" implies doing exactly what was saved.
-    // "or use its response as part of another" implies extraction which is next.
-    // For now, let's just implement basic run.
 }
 
 func runSavedRequest(ctx context.Context, name string) {
