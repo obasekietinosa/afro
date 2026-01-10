@@ -76,10 +76,6 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 			url = baseURL + url
 		}
 	} else if !strings.HasPrefix(url, "http") {
-		// If no base URL and no scheme, assume http:// for now.
-		if !strings.Contains(url, "://") {
-			// Proceed and let http.NewRequest fail or not.
-		}
 	}
 
 	var reqBody io.Reader
@@ -94,7 +90,6 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 			defer f.Close()
 			reqBody = f
 		} else if _, err := os.Stat(opts.Body); err == nil {
-			// It's a file (legacy implicit check)
 			f, err := os.Open(opts.Body)
 			if err != nil {
 				return fmt.Errorf("failed to open body file: %w", err)
@@ -118,7 +113,6 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 	}
 
 	// Add Headers
-	// 1. Common headers from config (unless --no-headers)
 	if !opts.NoHeaders {
 		headers := viper.GetStringMapString("headers")
 		for k, v := range headers {
@@ -126,8 +120,6 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 		}
 	}
 
-	// 2. Auth headers from config (unless --no-auth)
-    // Supports Basic Auth for now
 	if !opts.NoAuth {
 		username := viper.GetString("auth.username")
 		password := viper.GetString("auth.password")
@@ -136,15 +128,11 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 		}
 	}
 
-	// 3. CLI Headers (precedence)
 	for _, h := range opts.Headers {
 		parts := strings.SplitN(h, ":", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
 			val := strings.TrimSpace(parts[1])
-			// If header exists, we might want to overwrite or append.
-            // README says "If the same header is set on the bundle and in the request, the request takes precedence."
-            // So Set is better than Add for precedence if it exists.
 			req.Header.Set(key, val)
 		}
 	}
@@ -155,13 +143,6 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-
-    // Output status
-    // fmt.Printf("%s %s\n", resp.Proto, resp.Status)
-
-    // Output Headers? Maybe verbose mode?
-    // For now just output body as that's typical for curl-like tools, maybe status code too.
-    // The README doesn't explicitly say what to output, but usually it's the response body.
 
 	if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
 		return fmt.Errorf("failed to read body: %w", err)
