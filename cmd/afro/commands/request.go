@@ -31,6 +31,24 @@ type RequestOptions struct {
 	SaveName  string
 }
 
+func buildRequestOptions(method string, args []string, cmd *cobra.Command) RequestOptions {
+	body, _ := cmd.Flags().GetString("body")
+	headers, _ := cmd.Flags().GetStringSlice("header")
+	noAuth, _ := cmd.Flags().GetBool("no-auth")
+	noHeaders, _ := cmd.Flags().GetBool("no-headers")
+	saveName, _ := cmd.Flags().GetString("save")
+
+	return RequestOptions{
+		Method:    method,
+		URL:       args[0],
+		Body:      body,
+		Headers:   headers,
+		NoAuth:    noAuth,
+		NoHeaders: noHeaders,
+		SaveName:  saveName,
+	}
+}
+
 func saveRequest(opts RequestOptions, name string) {
 	// Structure: requests.<name>
 	key := fmt.Sprintf("requests.%s", name)
