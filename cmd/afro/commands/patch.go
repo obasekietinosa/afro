@@ -13,7 +13,7 @@ var patchCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		opts := buildRequestOptions("PATCH", args, cmd)
-		if err := makeRequest(cmd.Context(), opts); err != nil {
+		if err := makeRequest(cmd.Context(), opts, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

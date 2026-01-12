@@ -47,7 +47,7 @@ func TestMakeRequest(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := makeRequest(context.Background(), opts)
+	err := makeRequest(context.Background(), opts, os.Stdout)
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -91,7 +91,7 @@ func TestMakeRequestNoAuth(t *testing.T) {
     oldStdout := os.Stdout
     r, w, _ := os.Pipe()
     os.Stdout = w
-	err := makeRequest(context.Background(), opts)
+	err := makeRequest(context.Background(), opts, os.Stdout)
     w.Close()
     os.Stdout = oldStdout
     _, _ = r.Read(make([]byte, 100))
@@ -130,7 +130,7 @@ func TestOtherVerbs(t *testing.T) {
             r, w, _ := os.Pipe()
             os.Stdout = w
 
-            err := makeRequest(context.Background(), opts)
+            err := makeRequest(context.Background(), opts, os.Stdout)
 
             w.Close()
             os.Stdout = oldStdout

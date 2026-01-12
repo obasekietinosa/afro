@@ -79,7 +79,7 @@ func saveRequest(opts RequestOptions, name string) {
 	}
 }
 
-func makeRequest(ctx context.Context, opts RequestOptions) error {
+func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error {
 	// Determine URL
 	url := opts.URL
 	baseURL := viper.GetString("base_url")
@@ -162,11 +162,16 @@ func makeRequest(ctx context.Context, opts RequestOptions) error {
 	}
 	defer resp.Body.Close()
 
-	if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
+	if out == nil {
+		out = os.Stdout
+	}
+	if _, err := io.Copy(out, resp.Body); err != nil {
 		return fmt.Errorf("failed to read body: %w", err)
 	}
-	// Ensure newline at the end for friendliness in CLI
-	fmt.Println()
+	// Ensure newline at the end for friendliness in CLI if writing to stdout
+	if out == os.Stdout {
+		fmt.Println()
+	}
 
 	return nil
 }
