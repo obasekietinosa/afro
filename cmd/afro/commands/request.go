@@ -144,6 +144,10 @@ func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error 
 		if username != "" {
 			req.SetBasicAuth(username, password)
 		}
+		cookie := viper.GetString("auth.cookie")
+		if cookie != "" {
+			req.Header.Set("Cookie", cookie)
+		}
 	}
 
 	for _, h := range opts.Headers {
