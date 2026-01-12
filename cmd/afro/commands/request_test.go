@@ -157,3 +157,61 @@ func TestOtherVerbs(t *testing.T) {
         })
     }
 }
+
+func TestExtractToConfig(t *testing.T) {
+	// Setup a test server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"token": "secret-token", "user": {"id": 123}}`)
+	}))
+	defer ts.Close()
+
+	viper.Reset()
+	// Create a temporary config file for viper to write to
+	tmpFile, err := os.CreateTemp("", "afro-test-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	viper.SetConfigFile(tmpFile.Name())
+
+	opts := RequestOptions{
+		Method: "GET",
+		URL:    ts.URL,
+		ExtractToConfig: map[string]string{
+			"auth.token": "$.token",
+			"variables.userId": "$.user.id",
+		},
+	}
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = makeRequest(context.Background(), opts, os.Stdout)
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Errorf("makeRequest failed: %v", err)
+	}
+
+	// Check if stdout was preserved
+	out := make([]byte, 200)
+	n, _ := r.Read(out)
+	output := string(out[:n])
+	expected := `{"token": "secret-token", "user": {"id": 123}}` + "\n"
+	if output != expected {
+		t.Errorf("Expected output %q, got %q", expected, output)
+	}
+
+	// Check if viper config was updated
+	if viper.GetString("auth.token") != "secret-token" {
+		t.Errorf("Expected auth.token to be secret-token, got %s", viper.GetString("auth.token"))
+	}
+	if viper.GetInt("variables.userId") != 123 {
+		t.Errorf("Expected variables.userId to be 123, got %d", viper.GetInt("variables.userId"))
+	}
+}

@@ -117,24 +117,40 @@ func runSavedRequest(ctx context.Context, name string, vars map[string]interface
 	noAuth := viper.GetBool(key + ".no_auth")
 	noHeaders := viper.GetBool(key + ".no_headers")
 	extractCookie := viper.GetString(key + ".extract_cookie")
+	extractToConfig := viper.GetStringMapString(key + ".extract_to_config")
 
 	// Variable Substitution
+	// We want to combine explicit vars with variables from config (e.g. variables.token)
+	// Priority: explicit vars > config variables
+	combinedVars := make(map[string]interface{})
+	if configVars := viper.GetStringMap("variables"); configVars != nil {
+		for k, v := range configVars {
+			combinedVars[k] = v
+		}
+	}
 	if vars != nil {
-		url = substituteURL(url, vars)
-		body = substitute(body, vars)
+		for k, v := range vars {
+			combinedVars[k] = v
+		}
+	}
+
+	if len(combinedVars) > 0 {
+		url = substituteURL(url, combinedVars)
+		body = substitute(body, combinedVars)
 		for i, h := range headers {
-			headers[i] = substitute(h, vars)
+			headers[i] = substitute(h, combinedVars)
 		}
 	}
 
 	opts := RequestOptions{
-		Method:        method,
-		URL:           url,
-		Body:          body,
-		Headers:       headers,
-		NoAuth:        noAuth,
-		NoHeaders:     noHeaders,
-		ExtractCookie: extractCookie,
+		Method:          method,
+		URL:             url,
+		Body:            body,
+		Headers:         headers,
+		NoAuth:          noAuth,
+		NoHeaders:       noHeaders,
+		ExtractCookie:   extractCookie,
+		ExtractToConfig: extractToConfig,
 	}
 
 	return makeRequest(ctx, opts, out)

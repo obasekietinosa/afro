@@ -1,13 +1,16 @@
 package commands
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 
+	"github.com/oliveagle/jsonpath"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,18 +22,20 @@ func addRequestFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("no-headers", false, "Do not use configured common headers")
 	cmd.Flags().String("save", "", "Save the request with the given name")
 	cmd.Flags().String("extract-cookie", "", "Extract a cookie from the response and save it to the auth configuration")
+	cmd.Flags().StringToString("extract-to-config", nil, "Extract JSON fields to config (key=jsonpath)")
 }
 
 // RequestOptions holds the options for making a request
 type RequestOptions struct {
-	Method        string
-	URL           string
-	Body          string
-	Headers       []string
-	NoAuth        bool
-	NoHeaders     bool
-	SaveName      string
-	ExtractCookie string
+	Method          string
+	URL             string
+	Body            string
+	Headers         []string
+	NoAuth          bool
+	NoHeaders       bool
+	SaveName        string
+	ExtractCookie   string
+	ExtractToConfig map[string]string
 }
 
 func buildRequestOptions(method string, args []string, cmd *cobra.Command) RequestOptions {
@@ -40,16 +45,18 @@ func buildRequestOptions(method string, args []string, cmd *cobra.Command) Reque
 	noHeaders, _ := cmd.Flags().GetBool("no-headers")
 	saveName, _ := cmd.Flags().GetString("save")
 	extractCookie, _ := cmd.Flags().GetString("extract-cookie")
+	extractToConfig, _ := cmd.Flags().GetStringToString("extract-to-config")
 
 	return RequestOptions{
-		Method:        method,
-		URL:           args[0],
-		Body:          body,
-		Headers:       headers,
-		NoAuth:        noAuth,
-		NoHeaders:     noHeaders,
-		SaveName:      saveName,
-		ExtractCookie: extractCookie,
+		Method:          method,
+		URL:             args[0],
+		Body:            body,
+		Headers:         headers,
+		NoAuth:          noAuth,
+		NoHeaders:       noHeaders,
+		SaveName:        saveName,
+		ExtractCookie:   extractCookie,
+		ExtractToConfig: extractToConfig,
 	}
 }
 
@@ -68,6 +75,9 @@ func saveRequest(opts RequestOptions, name string) {
 	viper.Set(key+".no_headers", opts.NoHeaders)
 	if opts.ExtractCookie != "" {
 		viper.Set(key+".extract_cookie", opts.ExtractCookie)
+	}
+	if len(opts.ExtractToConfig) > 0 {
+		viper.Set(key+".extract_to_config", opts.ExtractToConfig)
 	}
 
 	// Save the config
@@ -176,12 +186,51 @@ func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error 
 	if out == nil {
 		out = os.Stdout
 	}
-	if _, err := io.Copy(out, resp.Body); err != nil {
+
+	var bodyReader io.Reader
+	var captureBuf bytes.Buffer
+
+	if len(opts.ExtractToConfig) > 0 {
+		bodyReader = io.TeeReader(resp.Body, &captureBuf)
+	} else {
+		bodyReader = resp.Body
+	}
+
+	if _, err := io.Copy(out, bodyReader); err != nil {
 		return fmt.Errorf("failed to read body: %w", err)
 	}
 	// Ensure newline at the end for friendliness in CLI if writing to stdout
 	if out == os.Stdout {
 		fmt.Println()
+	}
+
+	if len(opts.ExtractToConfig) > 0 {
+		// Parse JSON
+		var jsonData interface{}
+		if err := json.Unmarshal(captureBuf.Bytes(), &jsonData); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to parse response as JSON for extraction: %v\n", err)
+		} else {
+			updated := false
+			for configKey, path := range opts.ExtractToConfig {
+				res, err := jsonpath.JsonPathLookup(jsonData, path)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to extract '%s' using path '%s': %v\n", configKey, path, err)
+					continue
+				}
+				// Save to viper config
+				// We support nested keys like "auth.token"
+				viper.Set(configKey, res)
+				updated = true
+				fmt.Fprintf(os.Stderr, "Extracted '%s' to config key '%s'.\n", res, configKey)
+			}
+			if updated {
+				if err := viper.WriteConfig(); err != nil {
+					if viper.ConfigFileUsed() == "" {
+						_ = viper.WriteConfigAs("afro.yaml")
+					}
+				}
+			}
+		}
 	}
 
 	if opts.ExtractCookie != "" {
