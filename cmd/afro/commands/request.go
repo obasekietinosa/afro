@@ -18,17 +18,19 @@ func addRequestFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("no-auth", false, "Do not use configured authentication")
 	cmd.Flags().Bool("no-headers", false, "Do not use configured common headers")
 	cmd.Flags().String("save", "", "Save the request with the given name")
+	cmd.Flags().String("extract-cookie", "", "Extract a cookie from the response and save it to the auth configuration")
 }
 
 // RequestOptions holds the options for making a request
 type RequestOptions struct {
-	Method    string
-	URL       string
-	Body      string
-	Headers   []string
-	NoAuth    bool
-	NoHeaders bool
-	SaveName  string
+	Method        string
+	URL           string
+	Body          string
+	Headers       []string
+	NoAuth        bool
+	NoHeaders     bool
+	SaveName      string
+	ExtractCookie string
 }
 
 func buildRequestOptions(method string, args []string, cmd *cobra.Command) RequestOptions {
@@ -37,15 +39,17 @@ func buildRequestOptions(method string, args []string, cmd *cobra.Command) Reque
 	noAuth, _ := cmd.Flags().GetBool("no-auth")
 	noHeaders, _ := cmd.Flags().GetBool("no-headers")
 	saveName, _ := cmd.Flags().GetString("save")
+	extractCookie, _ := cmd.Flags().GetString("extract-cookie")
 
 	return RequestOptions{
-		Method:    method,
-		URL:       args[0],
-		Body:      body,
-		Headers:   headers,
-		NoAuth:    noAuth,
-		NoHeaders: noHeaders,
-		SaveName:  saveName,
+		Method:        method,
+		URL:           args[0],
+		Body:          body,
+		Headers:       headers,
+		NoAuth:        noAuth,
+		NoHeaders:     noHeaders,
+		SaveName:      saveName,
+		ExtractCookie: extractCookie,
 	}
 }
 
@@ -62,6 +66,9 @@ func saveRequest(opts RequestOptions, name string) {
 	}
 	viper.Set(key+".no_auth", opts.NoAuth)
 	viper.Set(key+".no_headers", opts.NoHeaders)
+	if opts.ExtractCookie != "" {
+		viper.Set(key+".extract_cookie", opts.ExtractCookie)
+	}
 
 	// Save the config
 	if err := viper.WriteConfig(); err != nil {
@@ -144,6 +151,10 @@ func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error 
 		if username != "" {
 			req.SetBasicAuth(username, password)
 		}
+		cookie := viper.GetString("auth.cookie")
+		if cookie != "" {
+			req.Header.Set("Cookie", cookie)
+		}
 	}
 
 	for _, h := range opts.Headers {
@@ -171,6 +182,29 @@ func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error 
 	// Ensure newline at the end for friendliness in CLI if writing to stdout
 	if out == os.Stdout {
 		fmt.Println()
+	}
+
+	if opts.ExtractCookie != "" {
+		found := false
+		for _, c := range resp.Cookies() {
+			if c.Name == opts.ExtractCookie {
+				// We want to save name=value
+				val := fmt.Sprintf("%s=%s", c.Name, c.Value)
+				viper.Set("auth.cookie", val)
+				found = true
+				if err := viper.WriteConfig(); err != nil {
+					// Fallback
+					if viper.ConfigFileUsed() == "" {
+						_ = viper.WriteConfigAs("afro.yaml")
+					}
+				}
+				fmt.Fprintf(os.Stderr, "Extracted cookie '%s' and saved to auth configuration.\n", c.Name)
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(os.Stderr, "Warning: cookie '%s' not found in response.\n", opts.ExtractCookie)
+		}
 	}
 
 	return nil

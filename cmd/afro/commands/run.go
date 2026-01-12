@@ -116,6 +116,7 @@ func runSavedRequest(ctx context.Context, name string, vars map[string]interface
 	headers := viper.GetStringSlice(key + ".headers")
 	noAuth := viper.GetBool(key + ".no_auth")
 	noHeaders := viper.GetBool(key + ".no_headers")
+	extractCookie := viper.GetString(key + ".extract_cookie")
 
 	// Variable Substitution
 	if vars != nil {
@@ -127,12 +128,13 @@ func runSavedRequest(ctx context.Context, name string, vars map[string]interface
 	}
 
 	opts := RequestOptions{
-		Method:    method,
-		URL:       url,
-		Body:      body,
-		Headers:   headers,
-		NoAuth:    noAuth,
-		NoHeaders: noHeaders,
+		Method:        method,
+		URL:           url,
+		Body:          body,
+		Headers:       headers,
+		NoAuth:        noAuth,
+		NoHeaders:     noHeaders,
+		ExtractCookie: extractCookie,
 	}
 
 	return makeRequest(ctx, opts, out)
