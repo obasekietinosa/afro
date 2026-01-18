@@ -1,0 +1,115 @@
+base_url: http://localhost:8080
+
+requests:
+  signup:
+    method: POST
+    url: /signup
+    headers:
+      Content-Type: application/json
+    # We use dynamic vars here. The response should echo them back so we can extract them for consistency.
+    body: '{"name": "User {{name_suffix}}", "email": "{{email_prefix}}_{{$timestamp}}@test.com", "password": "password123"}'
+
+  login:
+    method: POST
+    url: /login
+    headers:
+      Content-Type: application/json
+    body: '{"email": "{{saved_email}}", "password": "password123"}'
+
+  create_inventory:
+    method: POST
+    url: /inventories
+    headers:
+      Authorization: Bearer {{token}}
+      Content-Type: application/json
+    body: '{"name": "Home Inventory"}'
+
+  invite_user:
+    method: POST
+    url: /inventories/{{inventory_id}}/invitations
+    headers:
+      Authorization: Bearer {{token}}
+      Content-Type: application/json
+    body: '{"email": "{{invitee_email}}", "role": "editor"}'
+
+  accept_invite:
+    method: POST
+    url: /invitations/{{invite_id}}/accept
+    # This request uses {{token}}. We mapped token_b to it in the chain.
+    headers:
+      Authorization: Bearer {{token}}
+      Content-Type: application/json
+    body: '{}'
+
+  list_members:
+    method: GET
+    url: /inventories/{{inventory_id}}/members
+    headers:
+      Authorization: Bearer {{token}}
+
+chains:
+  full_user_flow:
+    # === Register User A ===
+    - request: signup
+      variables:
+        name_suffix: "A"
+        email_prefix: "userA"
+      extract:
+        token_a: $.token
+        email_a: $.user.email  # Extract generated email
+      on_status:
+        400: # Fallback to login if fails
+          - request: login
+            variables:
+              saved_email: "{{email_a}}"
+            extract:
+              token_a: $.token
+
+    # === Register User B ===
+    - request: signup
+      variables:
+        name_suffix: "B"
+        email_prefix: "userB"
+      extract:
+        token_b: $.token
+        email_b: $.user.email
+      on_status:
+        400:
+          - request: login
+            variables:
+              saved_email: "{{email_b}}"
+            extract:
+              token_b: $.token
+
+    # === User A Create Inventory ===
+    - request: create_inventory
+      variables:
+        token: "{{token_a}}"
+      extract:
+        inventory_id: $.id
+
+    # === User A Invite User B ===
+    - request: invite_user
+      variables:
+        token: "{{token_a}}"
+        invitee_email: "{{email_b}}"
+      extract:
+        invite_id: $.id
+
+    # === User B Accepting Invite ===
+    - request: accept_invite
+      variables:
+        token: "{{token_b}}" # Map token_b to {{token}} for this request
+      extract:
+        accept_resp: $
+    
+    # === User A Listing Members ===
+    - request: list_members
+      variables:
+        token: "{{token_a}}"
+      extract:
+        member_count: "$.length()"
+      assert:
+        - left: "{{member_count}}"
+          op: ">="
+          right: "1"
