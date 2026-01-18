@@ -34,23 +34,7 @@ func runInit() {
 	baseURL = strings.TrimSpace(baseURL)
 	viper.Set("base_url", baseURL)
 
-	// Authentication
-	fmt.Print("Configure Basic Authentication? [y/N]: ")
-	authConfirm, _ := reader.ReadString('\n')
-	authConfirm = strings.TrimSpace(strings.ToLower(authConfirm))
 
-	if authConfirm == "y" || authConfirm == "yes" {
-		fmt.Print("Username: ")
-		username, _ := reader.ReadString('\n')
-		username = strings.TrimSpace(username)
-
-		fmt.Print("Password: ")
-		password, _ := reader.ReadString('\n')
-		password = strings.TrimSpace(password)
-
-		viper.Set("auth.username", username)
-		viper.Set("auth.password", password)
-	}
 
 	// Common Headers
 	fmt.Print("Configure common headers? [y/N]: ")
