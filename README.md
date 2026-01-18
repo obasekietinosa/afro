@@ -39,8 +39,27 @@ You can configure chains in your `afro.yaml`.
 #### Extraction
 Extraction happens via JSON path and will store the extracted value in the named variable. That named variable can then be used in the next request as needed by using `{{var_name}}` syntax in URL, body, or headers.
 
+
+#### Dynamic Variables
+Afro supports built-in dynamic variables that are evaluated at runtime:
+- `{{$timestamp}}`: Current Unix timestamp.
+- `{{$uuid}}`: A random UUID-like string.
+
 #### Branching
 You can specify branching logic based on the status code of a response. This allows you to implement flows like "if 401, login, then retry".
+
+#### Assertions
+You can verify response data using assertions. If an assertion fails, the chain stops.
+```yaml
+- request: "get_members"
+  extract:
+    count: "$.length()"
+  assert:
+    - left: "{{count}}"
+      op: ">="
+      right: "1"
+```
+Supported operators: `==`, `!=`, `>`, `>=`, `<`, `<=`.
 
 Example chain configuration in `afro.yaml`:
 

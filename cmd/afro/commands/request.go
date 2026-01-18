@@ -73,7 +73,7 @@ func saveRequest(opts RequestOptions, name string) {
 	}
 }
 
-func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error {
+func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) (int, error) {
 	// Determine URL
 	url := opts.URL
 	baseURL := viper.GetString("base_url")
@@ -97,14 +97,14 @@ func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error 
 			filePath := strings.TrimPrefix(opts.Body, "@")
 			f, err := os.Open(filePath)
 			if err != nil {
-				return fmt.Errorf("failed to open body file: %w", err)
+				return 0, fmt.Errorf("failed to open body file: %w", err)
 			}
 			defer f.Close()
 			reqBody = f
 		} else if _, err := os.Stat(opts.Body); err == nil {
 			f, err := os.Open(opts.Body)
 			if err != nil {
-				return fmt.Errorf("failed to open body file: %w", err)
+				return 0, fmt.Errorf("failed to open body file: %w", err)
 			}
 			defer f.Close()
 			reqBody = f
@@ -116,7 +116,7 @@ func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error 
 
 	req, err := http.NewRequestWithContext(ctx, opts.Method, url, reqBody)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Save request if requested
@@ -144,7 +144,7 @@ func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return 0, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -152,12 +152,12 @@ func makeRequest(ctx context.Context, opts RequestOptions, out io.Writer) error 
 		out = os.Stdout
 	}
 	if _, err := io.Copy(out, resp.Body); err != nil {
-		return fmt.Errorf("failed to read body: %w", err)
+		return resp.StatusCode, fmt.Errorf("failed to read body: %w", err)
 	}
 	// Ensure newline at the end for friendliness in CLI if writing to stdout
 	if out == os.Stdout {
 		fmt.Println()
 	}
 
-	return nil
+	return resp.StatusCode, nil
 }

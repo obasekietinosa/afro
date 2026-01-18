@@ -41,7 +41,7 @@ func TestMakeRequest(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := makeRequest(context.Background(), opts, os.Stdout)
+	_, err := makeRequest(context.Background(), opts, os.Stdout)
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -89,7 +89,7 @@ func TestOtherVerbs(t *testing.T) {
 			r, w, _ := os.Pipe()
 			os.Stdout = w
 
-			err := makeRequest(context.Background(), opts, os.Stdout)
+			_, err := makeRequest(context.Background(), opts, os.Stdout)
 
 			w.Close()
 			os.Stdout = oldStdout

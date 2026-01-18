@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
+
+	"math/rand"
+	"strconv"
+	"time"
 
 	"github.com/oliveagle/jsonpath"
 	"github.com/spf13/cobra"
@@ -40,10 +43,18 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 }
 
+type Assertion struct {
+	Left  string `mapstructure:"left"`
+	Op    string `mapstructure:"op"`
+	Right string `mapstructure:"right"`
+}
+
 type ChainStep struct {
-	Request  string              `mapstructure:"request"`
-	Extract  map[string]string   `mapstructure:"extract"`
-	OnStatus map[int][]ChainStep `mapstructure:"on_status"`
+	Request   string              `mapstructure:"request"`
+	Extract   map[string]string   `mapstructure:"extract"`
+	OnStatus  map[int][]ChainStep `mapstructure:"on_status"`
+	Assert    []Assertion         `mapstructure:"assert"`
+	Variables map[string]string   `mapstructure:"variables"`
 }
 
 func runChain(ctx context.Context, name string) error {
@@ -75,7 +86,22 @@ func executeSteps(ctx context.Context, steps []ChainStep, variables map[string]i
 		// Use MultiWriter to still show output to user.
 		outputWriter := io.MultiWriter(os.Stdout, &captureBuf)
 
-		respStatusCode, err := runSavedRequest(ctx, step.Request, variables, outputWriter)
+		// Merge step-level variables (mapping/overrides)
+		// We create a copy of variables for this step to avoid polluting the global scope if that's desired?
+		// Actually, the user wants to map "token_b" to "token".
+		// variables={"token": "{{token_b}}"}
+		// So we need to process these.
+		stepVars := make(map[string]interface{})
+		for k, v := range variables {
+			stepVars[k] = v
+		}
+		for k, v := range step.Variables {
+			// Substitute values from global variables
+			// e.g. v="{{token_b}}", we look up token_b in variables
+			stepVars[k] = substitute(v, variables)
+		}
+
+		respStatusCode, err := runSavedRequest(ctx, step.Request, stepVars, outputWriter)
 		if err != nil {
 			return fmt.Errorf("step '%s' failed: %w", step.Request, err)
 		}
@@ -97,12 +123,70 @@ func executeSteps(ctx context.Context, steps []ChainStep, variables map[string]i
 			}
 		}
 
+		// Assertions
+		if len(step.Assert) > 0 {
+			if err := executeAssertions(step.Assert, variables); err != nil {
+				return fmt.Errorf("assertion failed in step '%s': %w", step.Request, err)
+			}
+		}
+
 		// Branching
 		if subSteps, ok := step.OnStatus[respStatusCode]; ok {
 			fmt.Fprintf(os.Stderr, "Status %d matched, executing branch...\n", respStatusCode)
 			if err := executeSteps(ctx, subSteps, variables); err != nil {
 				return fmt.Errorf("branch execution failed: %w", err)
 			}
+		}
+	}
+	return nil
+}
+
+func executeAssertions(assertions []Assertion, vars map[string]interface{}) error {
+	for i, a := range assertions {
+		left := substitute(a.Left, vars)
+		right := substitute(a.Right, vars)
+
+		// Simple integer comparison if possible
+		leftInt, errL := strconv.Atoi(left)
+		rightInt, errR := strconv.Atoi(right)
+		isNumeric := errL == nil && errR == nil
+
+		pass := false
+		switch a.Op {
+		case "==":
+			pass = left == right
+		case "!=":
+			pass = left != right
+		case ">":
+			if isNumeric {
+				pass = leftInt > rightInt
+			} else {
+				pass = left > right
+			}
+		case ">=":
+			if isNumeric {
+				pass = leftInt >= rightInt
+			} else {
+				pass = left >= right
+			}
+		case "<":
+			if isNumeric {
+				pass = leftInt < rightInt
+			} else {
+				pass = left < right
+			}
+		case "<=":
+			if isNumeric {
+				pass = leftInt <= rightInt
+			} else {
+				pass = left <= right
+			}
+		default:
+			return fmt.Errorf("unknown operator '%s'", a.Op)
+		}
+
+		if !pass {
+			return fmt.Errorf("assertion %d failed: '%s' %s '%s'", i+1, left, a.Op, right)
 		}
 	}
 	return nil
@@ -118,7 +202,14 @@ func runSavedRequest(ctx context.Context, name string, vars map[string]interface
 	method := viper.GetString(key + ".method")
 	url := viper.GetString(key + ".url")
 	body := viper.GetString(key + ".body")
-	headers := viper.GetStringSlice(key + ".headers")
+	var headers []string
+	if headerMap := viper.GetStringMapString(key + ".headers"); len(headerMap) > 0 {
+		for k, v := range headerMap {
+			headers = append(headers, fmt.Sprintf("%s: %s", k, v))
+		}
+	} else {
+		headers = viper.GetStringSlice(key + ".headers")
+	}
 	noHeaders := viper.GetBool(key + ".no_headers")
 
 	// Variable Substitution
@@ -139,109 +230,21 @@ func runSavedRequest(ctx context.Context, name string, vars map[string]interface
 	}
 
 	// We need to capture the response to get the status code.
-	// makeRequest currently doesn't return the response or status code.
-	// I need to update makeRequest or duplicate logic slightly?
-	// makeRequest is in request.go. I should update it to return status code?
-	// Or I can just inline the request making logic here?
-	// Better to update request.go to return *http.Response or status code.
-	// But I cannot edit request.go in this tool call (limitations).
-	// I will assume I can't edit request.go blindly without context.
-	// Wait, I just edited request.go.
-	// Implementation strategy:
-	// Copy a variation of makeRequest logic here for now, OR update request.go in a subsequent step.
-	// Since I need the status code for branching, and makeRequest doesn't return it,
-	// I definitely need to modify makeRequest or use a local version.
-	// Given the instructions, I should probably modify makeRequest.
-	// I will implement a local 'makeRequestWithStatus' for now to fit in this file replacement.
-
-	return makeRequestWithStatus(ctx, opts, out)
-}
-
-func makeRequestWithStatus(ctx context.Context, opts RequestOptions, out io.Writer) (int, error) {
-	// ... Copy of makeRequest logic but returning status ...
-	// Since I can't import private things from the same package easily if they aren't exported... everything is in `commands` package.
-	// makeRequest is in the same package.
-
-	// Determine URL
-	urlVal := opts.URL
-	baseURL := viper.GetString("base_url")
-
-	if !strings.HasPrefix(urlVal, "http") && baseURL != "" {
-		if !strings.HasSuffix(baseURL, "/") && !strings.HasPrefix(urlVal, "/") {
-			urlVal = baseURL + "/" + urlVal
-		} else if strings.HasSuffix(baseURL, "/") && strings.HasPrefix(urlVal, "/") {
-			urlVal = baseURL + strings.TrimPrefix(urlVal, "/")
-		} else {
-			urlVal = baseURL + urlVal
-		}
-	}
-
-	var reqBody io.Reader
-	if opts.Body != "" {
-		if strings.HasPrefix(opts.Body, "@") {
-			filePath := strings.TrimPrefix(opts.Body, "@")
-			f, err := os.Open(filePath)
-			if err != nil {
-				return 0, fmt.Errorf("failed to open body file: %w", err)
-			}
-			defer f.Close()
-			reqBody = f
-		} else if _, err := os.Stat(opts.Body); err == nil {
-			f, err := os.Open(opts.Body)
-			if err != nil {
-				return 0, fmt.Errorf("failed to open body file: %w", err)
-			}
-			defer f.Close()
-			reqBody = f
-		} else {
-			reqBody = strings.NewReader(opts.Body)
-		}
-	}
-
-	req, err := http.NewRequestWithContext(ctx, opts.Method, urlVal, reqBody)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if !opts.NoHeaders {
-		headers := viper.GetStringMapString("headers")
-		for k, v := range headers {
-			req.Header.Add(k, v)
-		}
-	}
-
-	for _, h := range opts.Headers {
-		parts := strings.SplitN(h, ":", 2)
-		if len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			val := strings.TrimSpace(parts[1])
-			req.Header.Set(key, val)
-		}
-	}
-
-	client := &http.Client{}
-	// Don't follow redirects automatically? Standard client follows.
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if out == nil {
-		out = os.Stdout
-	}
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		return resp.StatusCode, fmt.Errorf("failed to read body: %w", err)
-	}
-	if out == os.Stdout {
-		fmt.Println()
-	}
-
-	return resp.StatusCode, nil
+	// makeRequest has been updated to return status code.
+	return makeRequest(ctx, opts, out)
 }
 
 func substitute(tmpl string, vars map[string]interface{}) string {
+	// Built-in dynamic variables
+	if strings.Contains(tmpl, "{{$timestamp}}") {
+		tmpl = strings.ReplaceAll(tmpl, "{{$timestamp}}", fmt.Sprintf("%d", time.Now().Unix()))
+	}
+	if strings.Contains(tmpl, "{{$uuid}}") {
+		// Simple random "UUID" - good enough for now
+		uuid := fmt.Sprintf("%x", rand.Int63())
+		tmpl = strings.ReplaceAll(tmpl, "{{$uuid}}", uuid)
+	}
+
 	for k, v := range vars {
 		placeholder := fmt.Sprintf("{{%s}}", k)
 		valStr := fmt.Sprintf("%v", v)
@@ -251,6 +254,15 @@ func substitute(tmpl string, vars map[string]interface{}) string {
 }
 
 func substituteURL(tmpl string, vars map[string]interface{}) string {
+	// Built-in dynamic variables
+	if strings.Contains(tmpl, "{{$timestamp}}") {
+		tmpl = strings.ReplaceAll(tmpl, "{{$timestamp}}", fmt.Sprintf("%d", time.Now().Unix()))
+	}
+	if strings.Contains(tmpl, "{{$uuid}}") {
+		uuid := fmt.Sprintf("%x", rand.Int63())
+		tmpl = strings.ReplaceAll(tmpl, "{{$uuid}}", uuid)
+	}
+
 	for k, v := range vars {
 		placeholder := fmt.Sprintf("{{%s}}", k)
 		valStr := fmt.Sprintf("%v", v)
